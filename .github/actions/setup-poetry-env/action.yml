@@ -1,0 +1,60 @@
+name: "setup-poetry-env"
+description: "Composite action to setup the Python and poetry environment."
+
+inputs:
+  python-version:
+    required: false
+    description: "The python version to use"
+    default: "3.11"
+  optional-dependency-groups:
+    required: false
+    description: "comma separated list of additional dependency groups to install"
+    default: ''
+  
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Poetry
+      env:
+        POETRY_VERSION: "1.6.1"
+      run: curl -sSL https://install.python-poetry.org | python - -y
+      shell: bash
+
+    - name: Add Poetry to Path
+      run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+      shell: bash
+
+    - name: Configure Poetry virtual environment in project
+      run: poetry config virtualenvs.in-project true
+      shell: bash
+
+    - name: Format dependency groups
+      id: format-dep-groups
+      run: |
+        DEP_GROUPS="${{ inputs.optional-dependency-groups }}"
+        echo "FORMATTED_DEP_GROUPS=${DEP_GROUPS//,}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ inputs.python-version }}-${{ env.FORMATTED_DEP_GROUPS }}-${{ hashFiles('poetry.lock') }}
+
+    - name: Install dependencies
+      run: |
+        if [[ "${{ inputs.optional-dependency-groups }}" != "" ]]; then
+          poetry install --no-interaction --with ${{ inputs.optional-dependency-groups }}
+        else
+          poetry install --no-interaction
+        fi
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      shell: bash
+
